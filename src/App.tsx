@@ -12,7 +12,7 @@ import {
 import GameCanvas, { FxEvent, RenderData } from "./components/GameCanvas";
 import { audio } from "./audio/engine";
 
-const HIGH_SCORE_KEY = "snake-neon-record-v3";
+const HIGH_SCORE_KEY = "serpentix-record-v3";
 
 const loadHighScore = (): number => {
   try {
@@ -379,6 +379,12 @@ export default function App() {
     renderRef.current.direction = state.direction;
   }, [state]);
 
+  /* ----------------------- Intensité musicale ------------------------- */
+
+  useEffect(() => {
+    audio.setIntensity(state.score, state.levelIndex, state.speedMs, newRecord);
+  }, [state.score, state.levelIndex, state.speedMs, newRecord]);
+
   /* ----------------------- Effets : score / phases -------------------- */
 
   useEffect(() => {
@@ -512,10 +518,10 @@ export default function App() {
             </motion.div>
             <div>
               <h1 className="bg-gradient-to-r from-lime-200 via-emerald-300 to-teal-300 bg-clip-text text-xl font-black tracking-tight text-transparent sm:text-2xl">
-                Snake Néon
+                Serpentix
               </h1>
               <p className="text-[11px] text-emerald-300/70">
-                Le grand classique, version améliorée
+                Le serpent qui danse au rythme du synthwave
               </p>
             </div>
           </div>
