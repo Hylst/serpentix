@@ -3,16 +3,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Direction,
   GameState,
+  GameStats,
   LEVELS,
   createInitialState,
   setDirection,
   startLevel,
   tick,
+  getLevel,
 } from "./game/snake";
 import GameCanvas, { FxEvent, RenderData } from "./components/GameCanvas";
 import { audio } from "./audio/engine";
 
 const HIGH_SCORE_KEY = "serpentix-record-v3";
+const STATS_KEY = "serpentix-stats-v1";
 
 const loadHighScore = (): number => {
   try {
@@ -25,29 +28,35 @@ const loadHighScore = (): number => {
   }
 };
 
-const persistHighScore = (score: number) => {
+const loadStats = (): GameStats => {
   try {
-    localStorage.setItem(HIGH_SCORE_KEY, String(score));
+    const raw = localStorage.getItem(STATS_KEY);
+    if (!raw) return { totalApples: 0, totalGames: 0, maxLevel: 0, totalTime: 0 };
+    return JSON.parse(raw) as GameStats;
   } catch {
-    /* ignoré */
+    return { totalApples: 0, totalGames: 0, maxLevel: 0, totalTime: 0 };
   }
 };
 
-/* ------------------------------------------------------------------ */
-/* Composants UI réutilisables                                         */
-/* ------------------------------------------------------------------ */
+const persistStats = (stats: GameStats) => {
+  try {
+    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+  } catch { /* ignoré */ }
+};
+
+const persistHighScore = (score: number) => {
+  try {
+    localStorage.setItem(HIGH_SCORE_KEY, String(score));
+  } catch { /* ignoré */ }
+};
 
 const panel =
   "rounded-2xl border border-emerald-800/50 bg-slate-950/60 shadow-2xl shadow-emerald-950/50 backdrop-blur-sm";
 
 const Stat = ({
-  label,
-  value,
-  highlight,
+  label, value, highlight,
 }: {
-  label: string;
-  value: string | number;
-  highlight?: boolean;
+  label: string; value: string | number; highlight?: boolean;
 }) => (
   <motion.div
     whileTap={{ scale: 0.97 }}
@@ -58,39 +67,19 @@ const Stat = ({
         : "border-emerald-800/60 bg-emerald-950/40",
     ].join(" ")}
   >
-    <div className="text-[10px] uppercase tracking-[0.2em] text-emerald-300/70">
-      {label}
-    </div>
-    <div
-      className={[
-        "text-xl font-bold tabular-nums sm:text-2xl",
-        highlight ? "text-amber-200" : "text-emerald-50",
-      ].join(" ")}
-    >
-      {value}
-    </div>
+    <div className="text-[10px] uppercase tracking-[0.2em] text-emerald-300/70">{label}</div>
+    <div className={["text-xl font-bold tabular-nums sm:text-2xl", highlight ? "text-amber-200" : "text-emerald-50"].join(" ")}>{value}</div>
   </motion.div>
 );
 
 const IconToggle = ({
-  label,
-  active,
-  onClick,
-  children,
+  label, active, onClick, children,
 }: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
+  label: string; active: boolean; onClick: () => void; children: React.ReactNode;
 }) => (
   <motion.button
-    type="button"
-    aria-label={label}
-    aria-pressed={active}
-    title={label}
-    onClick={onClick}
-    whileTap={{ scale: 0.88 }}
-    whileHover={{ scale: 1.06 }}
+    type="button" aria-label={label} aria-pressed={active} title={label}
+    onClick={onClick} whileTap={{ scale: 0.88 }} whileHover={{ scale: 1.06 }}
     className={[
       "flex h-10 w-10 items-center justify-center rounded-xl border transition",
       active
@@ -103,17 +92,12 @@ const IconToggle = ({
 );
 
 const PrimaryButton = ({
-  onClick,
-  children,
-  className = "",
+  onClick, children, className = "",
 }: {
-  onClick: () => void;
-  children: React.ReactNode;
-  className?: string;
+  onClick: () => void; children: React.ReactNode; className?: string;
 }) => (
   <motion.button
-    type="button"
-    onClick={onClick}
+    type="button" onClick={onClick}
     whileHover={{ scale: 1.02, filter: "brightness(1.1)" }}
     whileTap={{ scale: 0.96 }}
     className={[
@@ -126,19 +110,12 @@ const PrimaryButton = ({
 );
 
 const GhostButton = ({
-  onClick,
-  children,
-  className = "",
+  onClick, children, className = "",
 }: {
-  onClick: () => void;
-  children: React.ReactNode;
-  className?: string;
+  onClick: () => void; children: React.ReactNode; className?: string;
 }) => (
   <motion.button
-    type="button"
-    onClick={onClick}
-    whileTap={{ scale: 0.96 }}
-    whileHover={{ scale: 1.03 }}
+    type="button" onClick={onClick} whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.03 }}
     className={[
       "rounded-xl border border-emerald-700/60 bg-emerald-900/40 px-4 py-2.5 text-sm font-bold text-emerald-100 transition hover:bg-emerald-800/50",
       className,
@@ -148,18 +125,16 @@ const GhostButton = ({
   </motion.button>
 );
 
-/* ------------------------------------------------------------------ */
-/* Application                                                         */
-/* ------------------------------------------------------------------ */
-
 export default function App() {
+  const savedStats = loadStats();
   const [state, setState] = useState<GameState>(() =>
-    createInitialState(true, loadHighScore()),
+    createInitialState(true, loadHighScore(), savedStats),
   );
   const [musicOn, setMusicOn] = useState(true);
   const [sfxOn, setSfxOn] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [newRecord, setNewRecord] = useState(false);
+  const [showStats, setShowStats] = useState(false);
 
   const shellRef = useRef<HTMLDivElement | null>(null);
   const prevSnakeRef = useRef(state.snake);
@@ -169,6 +144,8 @@ export default function App() {
   const lastFoodRef = useRef(state.food);
   const recordRef = useRef(state.highScore);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const prevDirRef = useRef(state.direction);
+  const gameStartRef = useRef(0);
 
   const renderRef = useRef<RenderData>({
     snake: state.snake,
@@ -179,25 +156,31 @@ export default function App() {
     obstacles: state.obstacles,
     phase: state.phase,
     direction: state.direction,
+    powerUp: state.powerUp,
+    powerUpActive: state.powerUpActive,
   });
   const fxRef = useRef<FxEvent[]>([]);
 
   const phase = state.phase;
-  const level = LEVELS[state.levelIndex];
+  const level = getLevel(state.levelIndex);
+  const isPowerActive = state.powerUpActive !== null;
 
   /* ----------------------------- Actions ----------------------------- */
 
   const startGame = useCallback(() => {
     audio.unlock();
     audio.playClick();
+    audio.resetEatCount();
     if (musicOn) audio.startMusic();
     setNewRecord(false);
+    const stats = loadStats();
     setState((prev) =>
       startLevel(
-        { ...createInitialState(prev.wallsOn, prev.highScore) },
+        { ...createInitialState(prev.wallsOn, prev.highScore, stats) },
         0,
       ),
     );
+    gameStartRef.current = Date.now();
   }, [musicOn]);
 
   const nextLevel = useCallback(() => {
@@ -233,6 +216,9 @@ export default function App() {
         return setDirection({ ...prev, phase: "running" }, dir);
       }
       if (prev.phase !== "running") return prev;
+      if (dir !== prev.direction) {
+        audio.playTurn();
+      }
       return setDirection(prev, dir);
     });
   }, []);
@@ -266,6 +252,27 @@ export default function App() {
     });
   }, []);
 
+  const toggleShowStats = useCallback(() => {
+    audio.playClick();
+    setShowStats((prev) => !prev);
+  }, []);
+
+  /* ------------------------- Auto-pause au blur ----------------------- */
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden && phase === "running") {
+        setState((prev) => {
+          if (prev.phase !== "running") return prev;
+          audio.playPause();
+          return { ...prev, phase: "paused" };
+        });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [phase]);
+
   /* --------------------------- Plein écran --------------------------- */
 
   useEffect(() => {
@@ -280,23 +287,14 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       const map: Record<string, Direction> = {
-        arrowup: "UP",
-        arrowdown: "DOWN",
-        arrowleft: "LEFT",
-        arrowright: "RIGHT",
-        z: "UP",
-        q: "LEFT",
-        w: "UP",
-        a: "LEFT",
-        s: "DOWN",
-        d: "RIGHT",
+        arrowup: "UP", arrowdown: "DOWN", arrowleft: "LEFT", arrowright: "RIGHT",
+        z: "UP", q: "LEFT", w: "UP", a: "LEFT", s: "DOWN", d: "RIGHT",
       };
 
       if (key === " " || key === "p") {
         e.preventDefault();
         if (phase === "running" || phase === "paused") togglePause();
-        else if (phase === "menu" || phase === "gameover" || phase === "victory")
-          startGame();
+        else if (phase === "menu" || phase === "gameover" || phase === "victory") startGame();
         else if (phase === "levelup") nextLevel();
         return;
       }
@@ -377,6 +375,8 @@ export default function App() {
     renderRef.current.obstacles = state.obstacles;
     renderRef.current.phase = state.phase;
     renderRef.current.direction = state.direction;
+    renderRef.current.powerUp = state.powerUp;
+    renderRef.current.powerUpActive = state.powerUpActive;
   }, [state]);
 
   /* ----------------------- Intensité musicale ------------------------- */
@@ -401,10 +401,39 @@ export default function App() {
         recordRef.current = state.score;
         setNewRecord(true);
       }
+      // Save stats
+      const updatedStats = { ...state.stats, totalApples: state.stats.totalApples };
+      persistStats(updatedStats);
     }
     prevScoreRef.current = state.score;
     lastFoodRef.current = state.food;
-  }, [state.score, state.food]);
+  }, [state.score, state.food, state.stats]);
+
+  // Power-up effect
+  useEffect(() => {
+    if (state.powerUpActive && !prevPhaseRef.current) {
+      audio.playPowerUp();
+    }
+  }, [state.powerUpActive]);
+
+  // Track game start for play time
+  useEffect(() => {
+    if (phase === "running" && prevPhaseRef.current !== "running") {
+      gameStartRef.current = Date.now();
+    }
+    if (phase === "gameover" || phase === "victory") {
+      const elapsed = Math.floor((Date.now() - gameStartRef.current) / 1000);
+      if (elapsed > 0) {
+        const updated = {
+          ...state.stats,
+          totalGames: state.stats.totalGames + 1,
+          totalTime: state.stats.totalTime + elapsed,
+          maxLevel: Math.max(state.stats.maxLevel, state.levelIndex + 1),
+        };
+        persistStats(updated);
+      }
+    }
+  }, [phase, state.stats, state.levelIndex]);
 
   useEffect(() => {
     const prev = prevPhaseRef.current;
@@ -412,21 +441,11 @@ export default function App() {
       if (state.phase === "gameover") {
         audio.playDie();
         const head = state.snake[0];
-        fxRef.current.push({
-          type: "die",
-          x: head.x,
-          y: head.y,
-          at: performance.now(),
-        });
+        fxRef.current.push({ type: "die", x: head.x, y: head.y, at: performance.now() });
       } else if (state.phase === "levelup") {
         audio.playLevelUp();
         const head = state.snake[0];
-        fxRef.current.push({
-          type: "level",
-          x: head.x,
-          y: head.y,
-          at: performance.now(),
-        });
+        fxRef.current.push({ type: "level", x: head.x, y: head.y, at: performance.now() });
       } else if (state.phase === "victory") {
         audio.playVictory();
       }
@@ -434,55 +453,60 @@ export default function App() {
     }
   }, [state.phase, state.snake]);
 
+  // Near-death warning when snake is close to obstacle/self
+  useEffect(() => {
+    if (phase !== "running") return;
+    const head = state.snake[0];
+    const dir = state.direction;
+    const lookAhead = 2;
+    let danger = false;
+    for (let i = 1; i <= lookAhead; i++) {
+      const check = { x: head.x + (dir === "LEFT" ? -i : dir === "RIGHT" ? i : 0), y: head.y + (dir === "UP" ? -i : dir === "DOWN" ? i : 0) };
+      if (check.x < 0 || check.x >= 20 || check.y < 0 || check.y >= 20) { danger = true; break; }
+      if (state.snake.slice(1).some(s => s.x === check.x && s.y === check.y)) { danger = true; break; }
+      if (state.obstacles.some(o => o.x === check.x && o.y === check.y)) { danger = true; break; }
+    }
+    if (danger) audio.playNearDeath();
+  }, [state.snake, state.direction, state.obstacles, phase]);
+
   /* ------------------------------- Rendu ------------------------------ */
 
-  const progress = Math.round(
-    (state.applesInLevel / level.applesToClear) * 100,
-  );
+  const progress = Math.round((state.applesInLevel / level.applesToClear) * 100);
 
   const overlayTitle =
-    phase === "menu"
-      ? "Prêt à jouer ?"
-      : phase === "paused"
-        ? "Pause"
-        : phase === "levelup"
-          ? "Niveau terminé !"
-          : phase === "gameover"
-            ? "Partie terminée"
-            : phase === "victory"
-              ? "Victoire !"
-              : "";
+    phase === "menu" ? "Prêt à jouer ?"
+      : phase === "paused" ? "Pause"
+        : phase === "levelup" ? "Niveau terminé !"
+          : phase === "gameover" ? "Partie terminée"
+            : phase === "victory" ? "Victoire !" : "";
 
   const overlayBody =
     phase === "menu"
-      ? `${LEVELS.length} niveaux à difficulté progressive vous attendent. Mangez les pommes, évitez les obstacles… et votre propre queue !`
-      : phase === "paused"
-        ? "Le serpent fait une petite sieste…"
-        : phase === "levelup"
-          ? `Prochain défi : ${LEVELS[state.levelIndex + 1]?.name}`
+      ? `Des niveaux infinis à difficulté progressive vous attendent. Mangez les pommes, évitez les obstacles… et votre propre queue !`
+      : phase === "paused" ? "Le serpent fait une petite sieste…"
+        : phase === "levelup" ? `Prochain défi : ${getLevel(state.levelIndex + 1)?.name}`
           : phase === "gameover"
-            ? state.score >= state.highScore && state.score > 0
-              ? "Nouveau record, bravo !"
-              : "Le serpent s'est mordu la queue… ou pire."
+            ? state.score >= state.highScore && state.score > 0 ? "Nouveau record, bravo !" : "Le serpent s'est mordu la queue… ou pire."
             : phase === "victory"
-              ? `Vous avez terminé les ${LEVELS.length} niveaux. Le serpent vous salue bien bas !`
+              ? `Vous avez terminé les ${LEVELS.length} niveaux. Le serpent vous salue bien bas ! Passez en mode Infini !`
               : "";
 
   const overlayAction =
-    phase === "menu" || phase === "gameover" || phase === "victory"
-      ? startGame
-      : phase === "levelup"
-        ? nextLevel
+    phase === "menu" || phase === "gameover" || phase === "victory" ? startGame
+      : phase === "levelup" ? nextLevel
         : togglePause;
 
   const overlayActionLabel =
-    phase === "menu"
-      ? "Jouer"
-      : phase === "gameover" || phase === "victory"
-        ? "Rejouer"
-        : phase === "levelup"
-          ? "Niveau suivant →"
+    phase === "menu" ? "Jouer"
+      : phase === "gameover" || phase === "victory" ? "Rejouer"
+        : phase === "levelup" ? "Niveau suivant →"
           : "Reprendre";
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}m ${sec}s`;
+  };
 
   return (
     <div
@@ -497,7 +521,6 @@ export default function App() {
       `}</style>
 
       <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col gap-4 px-3 py-4 sm:gap-5 sm:px-4 sm:py-8">
-        {/* ------------------------------ En-tête ------------------------------ */}
         <motion.header
           initial={{ opacity: 0, y: -18 }}
           animate={{ opacity: 1, y: 0 }}
@@ -530,8 +553,7 @@ export default function App() {
             <IconToggle label={musicOn ? "Couper la musique" : "Activer la musique"} active={musicOn} onClick={toggleMusic}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
                 <path d="M9 18V5l12-2v13" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="6" cy="18" r="3" />
-                <circle cx="18" cy="16" r="3" />
+                <circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
               </svg>
             </IconToggle>
             <IconToggle label={sfxOn ? "Couper les sons" : "Activer les sons"} active={sfxOn} onClick={toggleSfx}>
@@ -541,10 +563,14 @@ export default function App() {
                 <path d="M18.5 5.5a9 9 0 0 1 0 13" strokeLinecap="round" />
               </svg>
             </IconToggle>
+            <IconToggle label="Statistiques" active={showStats} onClick={toggleShowStats}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
+                <path d="M3 3v18h18M7 16l4-8 4 4 4-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </IconToggle>
             <IconToggle
               label={isFullscreen ? "Quitter le plein écran" : "Mode plein écran"}
-              active={isFullscreen}
-              onClick={toggleFullscreen}
+              active={isFullscreen} onClick={toggleFullscreen}
             >
               {isFullscreen ? (
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
@@ -559,7 +585,7 @@ export default function App() {
           </div>
         </motion.header>
 
-        {/* ------------------------------ Statistiques ------------------------- */}
+        {/* Stats */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -568,11 +594,30 @@ export default function App() {
         >
           <Stat label="Score" value={state.score} />
           <Stat label="Record" value={state.highScore} highlight={newRecord} />
-          <Stat label="Niveau" value={`${state.levelIndex + 1}/${LEVELS.length}`} />
+          <Stat label={getLevel(state.levelIndex) ? `Niveau ${state.levelIndex + 1}` : "Niveau"} value={getLevel(state.levelIndex) ? `${state.levelIndex + 1}` : "∞"} />
           <Stat label="Longueur" value={state.snake.length} />
         </motion.div>
 
-        {/* ------------------------------ Plateau ------------------------------ */}
+        {/* Stats panel */}
+        <AnimatePresence>
+          {showStats && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className={`${panel} overflow-hidden p-3 sm:p-4`}
+            >
+              <div className="grid grid-cols-4 gap-2 sm:gap-3">
+                <Stat label="Pommes" value={state.stats.totalApples} />
+                <Stat label="Parties" value={state.stats.totalGames} />
+                <Stat label="Meilleur niv." value={state.stats.maxLevel > 6 ? `${state.stats.maxLevel}` : state.stats.maxLevel} />
+                <Stat label="Temps" value={formatTime(state.stats.totalTime)} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Plateau */}
         <motion.div
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -588,6 +633,11 @@ export default function App() {
                 className="truncate text-sm font-bold text-emerald-100"
               >
                 Niveau {state.levelIndex + 1} — {level.name}
+                {isPowerActive && (
+                  <span className="ml-2 text-[10px] text-amber-300/80">
+                    • {state.powerUpActive === "invincible" ? "Invincible" : state.powerUpActive === "magnet" ? "Aimant" : "Ralenti"}
+                  </span>
+                )}
               </motion.div>
               <div className="text-[11px] text-emerald-300/70">
                 Pommes : {state.applesInLevel}/{level.applesToClear}
@@ -595,9 +645,7 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2">
               <motion.button
-                type="button"
-                onClick={toggleWalls}
-                whileTap={{ scale: 0.93 }}
+                type="button" onClick={toggleWalls} whileTap={{ scale: 0.93 }}
                 className={[
                   "rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition",
                   state.wallsOn
@@ -645,11 +693,7 @@ export default function App() {
             </AnimatePresence>
 
             <AnimatePresence>
-              {(phase === "menu" ||
-                phase === "paused" ||
-                phase === "levelup" ||
-                phase === "gameover" ||
-                phase === "victory") && (
+              {(phase === "menu" || phase === "paused" || phase === "levelup" || phase === "gameover" || phase === "victory") && (
                 <motion.div
                   key={phase}
                   initial={{ opacity: 0 }}
@@ -694,14 +738,7 @@ export default function App() {
                       {phase === "victory" && <span className="text-3xl">🏆</span>}
                     </motion.div>
 
-                    <h2
-                      className={[
-                        "text-2xl font-black",
-                        phase === "victory"
-                          ? "bg-gradient-to-r from-amber-200 to-yellow-400 bg-clip-text text-transparent"
-                          : "text-emerald-50",
-                      ].join(" ")}
-                    >
+                    <h2 className={["text-2xl font-black", phase === "victory" ? "bg-gradient-to-r from-amber-200 to-yellow-400 bg-clip-text text-transparent" : "text-emerald-50"].join(" ")}>
                       {overlayTitle}
                     </h2>
                     <p className="mt-2 text-sm leading-relaxed text-emerald-300/80">
@@ -724,6 +761,8 @@ export default function App() {
                         Flèches / ZQSD / WASD pour se déplacer · Espace : pause
                         <br />
                         Sur mobile : glissez le doigt sur le plateau
+                        <br />
+                        Power-ups : ★ invincible · 🧲 aimant · ⏱ ralenti
                       </p>
                     )}
                   </motion.div>
@@ -743,9 +782,7 @@ export default function App() {
                     : "bg-gradient-to-r from-emerald-400 to-lime-300",
                 ].join(" ")}
                 initial={false}
-                animate={{
-                  width: `${Math.max(4, Math.min(100, Math.round(((175 - state.speedMs) / (175 - 65)) * 100)))}%`,
-                }}
+                animate={{ width: `${Math.max(4, Math.min(100, Math.round(((175 - state.speedMs) / (175 - 65)) * 100)))}%` }}
                 transition={{ duration: 0.4 }}
               />
             </div>
@@ -753,7 +790,6 @@ export default function App() {
           </div>
         </motion.div>
 
-        {/* --------------------------- Pavé directionnel ----------------------- */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -769,17 +805,10 @@ export default function App() {
             ] as [Direction, string, string][]
           ).map(([dir, cls, path]) => (
             <motion.button
-              key={dir}
-              type="button"
-              whileTap={{ scale: 0.82 }}
-              aria-label={
-                dir === "UP" ? "Haut" : dir === "DOWN" ? "Bas" : dir === "LEFT" ? "Gauche" : "Droite"
-              }
+              key={dir} type="button" whileTap={{ scale: 0.82 }}
+              aria-label={dir === "UP" ? "Haut" : dir === "DOWN" ? "Bas" : dir === "LEFT" ? "Gauche" : "Droite"}
               onClick={() => (phase === "menu" ? startGame() : onDirection(dir))}
-              className={[
-                "h-14 w-14 rounded-xl border border-emerald-700/50 bg-emerald-900/40 text-emerald-200 transition hover:bg-emerald-800/50 active:bg-emerald-500/30",
-                cls,
-              ].join(" ")}
+              className={["h-14 w-14 rounded-xl border border-emerald-700/50 bg-emerald-900/40 text-emerald-200 transition hover:bg-emerald-800/50 active:bg-emerald-500/30", cls].join(" ")}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="mx-auto h-6 w-6">
                 <path d={path} strokeLinecap="round" strokeLinejoin="round" />
@@ -788,7 +817,6 @@ export default function App() {
           ))}
         </motion.div>
 
-        {/* ------------------------------ Pied de page ------------------------- */}
         <motion.footer
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -796,9 +824,7 @@ export default function App() {
           className="pb-2 text-center"
         >
           <p className="text-[11px] text-emerald-400/60">
-            {state.wallsOn
-              ? "Les murs sont mortels."
-              : "Les bords sont traversables."}{" "}
+            {state.wallsOn ? "Les murs sont mortels." : "Les bords sont traversables."}{" "}
             La vitesse augmente à chaque pomme et à chaque niveau.
           </p>
           <p className="mt-1.5 text-[11px] font-medium text-emerald-300/50">

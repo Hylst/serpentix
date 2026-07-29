@@ -10,9 +10,14 @@ export class AudioEngine {
   private musicTimer: number | null = null;
   private beat = 0;
   private currentIntensity = { score: 0, level: 0, speed: 170, record: false };
+  private eatCount = 0;
 
   musicOn = true;
   sfxOn = true;
+
+  getBeat() {
+    return this.beat;
+  }
 
   private ensure(): AudioContext | null {
     if (typeof window === "undefined") return null;
@@ -147,7 +152,7 @@ export class AudioEngine {
         this.musicNote(leadNotes[idx], t, 0.22, "sawtooth", 0.04, false);
       }
 
-      this.beat = (this.beat + 1) % 64;
+      this.beat = (this.beat + 1) % 128;
     }, STEP);
   }
 
@@ -162,8 +167,10 @@ export class AudioEngine {
     const ctx = this.ensure();
     if (!ctx || !this.sfxBus || !this.sfxOn) return;
     const t = this.now();
-    this.sweep(720, 1240, t, 0.07, "sine", 0.22);
-    this.sweep(1240, 1860, t + 0.06, 0.08, "triangle", 0.14);
+    this.eatCount++;
+    const pitch = this.eatCount % 5 === 0 ? 1.5 : 1;
+    this.sweep(720 * pitch, 1240 * pitch, t, 0.07, "sine", 0.22);
+    this.sweep(1240 * pitch, 1860 * pitch, t + 0.06, 0.08, "triangle", 0.14);
     this.noiseHit(t + 0.03, 0.04, 0.06);
   }
 
@@ -206,6 +213,32 @@ export class AudioEngine {
     const t = this.now();
     this.note(440, t, 0.07, "sine", 0.13, this.sfxBus);
     this.note(330, t + 0.09, 0.12, "sine", 0.13, this.sfxBus);
+  }
+
+  playTurn() {
+    if (!this.ctx || !this.sfxBus || !this.sfxOn) return;
+    const t = this.now();
+    this.note(660, t, 0.03, "sine", 0.06, this.sfxBus);
+  }
+
+  playPowerUp() {
+    const ctx = this.ensure();
+    if (!ctx || !this.sfxBus || !this.sfxOn) return;
+    const t = this.now();
+    [440, 554.37, 659.25, 880].forEach((f, i) => {
+      this.note(f, t + i * 0.06, 0.15, "triangle", 0.15, this.sfxBus!);
+    });
+    this.noiseHit(t, 0.12, 0.1);
+  }
+
+  playNearDeath() {
+    if (!this.ctx || !this.sfxBus || !this.sfxOn) return;
+    const t = this.now();
+    this.sweep(120, 80, t, 0.08, "sawtooth", 0.08);
+  }
+
+  resetEatCount() {
+    this.eatCount = 0;
   }
 
   private kick(t: number) {
