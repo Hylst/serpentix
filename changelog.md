@@ -1,4 +1,20 @@
-# Changelog — Serpentix
+# Changelog Serpentix
+
+## [1.2.0] 2026-08-03
+
+### Ajoute
+- Bouton Infos dans l'en-tete, ouvrant une modale avec la stack, les graphismes, la
+  musique, les interactions et les algorithmes notables (vitesse progressive, 3 power-ups
+  temporaires qui modifient les regles de collision). Etape 15 du chantier de retrofit
+  decrit dans `todo.md` racine du monorepo.
+
+### Corrige
+- 3 tirets longs (libelle de niveau en jeu, credit de pied de page, titre de ce changelog)
+  remplaces par des deux-points ou virgules, en conformite avec la regle du depot.
+
+### Verifie
+- Build propre, modale testee a l'ouverture/fermeture, aucune erreur console, aucun
+  debordement horizontal en 390x844.
 
 ## [1.1.0] — 2026-07-29
 ### Ajouté

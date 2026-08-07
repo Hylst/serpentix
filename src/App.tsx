@@ -135,6 +135,7 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [newRecord, setNewRecord] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
 
   const shellRef = useRef<HTMLDivElement | null>(null);
   const prevSnakeRef = useRef(state.snake);
@@ -525,7 +526,7 @@ export default function App() {
           initial={{ opacity: 0, y: -18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="flex items-center justify-between gap-2"
+          className="flex flex-wrap items-center justify-between gap-2"
         >
           <div className="flex items-center gap-3">
             <motion.div
@@ -549,7 +550,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <IconToggle label={musicOn ? "Couper la musique" : "Activer la musique"} active={musicOn} onClick={toggleMusic}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
                 <path d="M9 18V5l12-2v13" strokeLinecap="round" strokeLinejoin="round" />
@@ -581,6 +582,11 @@ export default function App() {
                   <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               )}
+            </IconToggle>
+            <IconToggle label="Comment ce jeu a été fait" active={showInfo} onClick={() => setShowInfo(true)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
+                <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" strokeLinecap="round" /><path d="M12 8h.01" strokeLinecap="round" />
+              </svg>
             </IconToggle>
           </div>
         </motion.header>
@@ -632,7 +638,7 @@ export default function App() {
                 animate={{ opacity: 1, x: 0 }}
                 className="truncate text-sm font-bold text-emerald-100"
               >
-                Niveau {state.levelIndex + 1} — {level.name}
+                Niveau {state.levelIndex + 1} : {level.name}
                 {isPowerActive && (
                   <span className="ml-2 text-[10px] text-amber-300/80">
                     • {state.powerUpActive === "invincible" ? "Invincible" : state.powerUpActive === "magnet" ? "Aimant" : "Ralenti"}
@@ -828,10 +834,29 @@ export default function App() {
             La vitesse augmente à chaque pomme et à chaque niveau.
           </p>
           <p className="mt-1.5 text-[11px] font-medium text-emerald-300/50">
-            Créé par <span className="text-emerald-200/80">Hylst — Geoffroy</span>{" "}
+            Créé par <span className="text-emerald-200/80">Hylst, Geoffroy</span>{" "}
             avec l'aide d'une IA
           </p>
         </motion.footer>
+
+        {showInfo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => setShowInfo(false)}>
+            <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-3xl border border-emerald-400/20 bg-[#04140f] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="p-6 space-y-3.5 text-sm leading-relaxed text-emerald-100/80">
+                <h3 className="bg-gradient-to-r from-lime-200 via-emerald-300 to-teal-300 bg-clip-text text-xl font-black text-transparent">Comment ce jeu a été fait</h3>
+                <p><strong className="text-white">Stack :</strong> React 19, TypeScript 5.9, Tailwind CSS 4, Vite 7, compilé en un seul fichier HTML. Animations avec Framer Motion.</p>
+                <p><strong className="text-white">Graphismes :</strong> le serpent et le plateau sont dessinés en Canvas 2D, l'interface autour (score, boutons) est en DOM/CSS.</p>
+                <p><strong className="text-white">Musique &amp; sons :</strong> synthétisés en direct avec l'API Web Audio, aucun fichier audio chargé.</p>
+                <p><strong className="text-white">Interactions :</strong> flèches ou tactile pour diriger le serpent, murs activables (mortels ou traversables selon le niveau).</p>
+                <p><strong className="text-white">Architecture :</strong> logique de jeu pure (<code>snake.ts</code>) séparée du rendu Canvas (<code>GameCanvas.tsx</code>).</p>
+                <p><strong className="text-white">Algorithmes notables :</strong> la vitesse augmente à chaque pomme mangée et à chaque niveau franchi, avec 3 power-ups temporaires (invincibilité, aimant qui attire les pommes, ralenti) qui modifient les règles de collision en cours de partie.</p>
+              </div>
+              <div className="border-t border-emerald-400/10 p-4 text-center">
+                <button onClick={() => setShowInfo(false)} className="rounded-full bg-gradient-to-r from-lime-300 to-emerald-600 px-6 py-2.5 text-sm font-bold text-emerald-950 transition hover:brightness-110 active:scale-95">Fermer</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
