@@ -19,3 +19,7 @@
 - [ ] Niveaux personnalisés (éditeur)
 - [ ] Internationalisation (EN/FR)
 - [ ] Animations de fond supplémentaires
+
+## Audit du 27/11/2026
+
+- [ ] Cocher la ligne « Mode infini », le mode existe déjà.
